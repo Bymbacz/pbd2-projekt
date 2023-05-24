@@ -2,75 +2,103 @@ package org.bd;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
+import java.time.LocalDate;
+//import java.time.LocalTime;
+//import java.time.Month;
+//import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
-import org.bd.model.Movie;
+import org.bd.model.QueryParser;
+import org.bd.model.Show;
+
 import org.hibernate.HibernateException;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
-import org.hibernate.cfg.Configuration;
-import org.hibernate.query.Query;
 public class Main {
 
-    private static final SessionFactory sessionFactory;
-
-
-    static {
-        try {
-            Configuration configuration = new Configuration();
-            configuration.configure();
-
-            sessionFactory = configuration.buildSessionFactory();
-        } catch (Throwable ex) {
-            throw new ExceptionInInitializerError(ex);
-        }
-    }
+    private static final SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
 
     public static Session getSession() throws HibernateException {
         return sessionFactory.openSession();
     }
 
     public static void main(String[] args) {
-
         HttpServer server;
         try {
             server = HttpServer.create(new InetSocketAddress(8080), 0);
             System.out.println("Nasłuchiwanie na porcie 8080");
             server.createContext("/", new GetFileHandler("src/main/resources/index.html", "text/html"));
             server.createContext("/style.css", new GetFileHandler("src/main/resources/style.css", "text/css"));
+
             server.createContext("/shows", (HttpExchange exchange) -> {
-                final Session session = getSession();
-
                 ObjectMapper om = new ObjectMapper();
+                //wymagane do parsowania LocalDate/LocalTime na format JSON
+                om.registerModule(new JavaTimeModule());
                 om.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+                Session session = getSession();
 
-                List<Movie> result = new ArrayList<>();
                 try {
-                    String hql = "from org.bd.model.Movie";
-                    Query<Movie> query = session.createQuery(hql, Movie.class);
+                    String queryString = exchange.getRequestURI().getQuery();
 
-                    result = query.getResultList();
+                    if (queryString == null) {
+                        throw new IllegalArgumentException();
+                    }
+
+                    Map<String, String> queryMap = new QueryParser().parse(queryString);
+
+                    if (!queryMap.containsKey("startDate") || !queryMap.containsKey("endDate")) {
+                        throw new IllegalArgumentException();
+                    }
+
+                    List<Show> shows = (new DatabaseHelper()).getShowsInRange(
+                        LocalDate.parse(queryMap.get("startDate")),
+                        LocalDate.parse(queryMap.get("endDate"))
+                    );
+
+                    HashMap<String, Object> map = new HashMap<>();
+                    map.put("shows", shows);
+                    String data = om.valueToTree(map).toString();
+                    exchange.getResponseHeaders().set("Content-type", "application/json");
+
+
+                    //TODO: wysyłać dane po kawałku, a nie wszystko naraz
+                    byte[] bytes = data.getBytes();
+                    exchange.sendResponseHeaders(200, bytes.length);
+                    exchange.getResponseBody().write(bytes);
+                } catch (IllegalArgumentException exception) {
+                    HashMap<String, String> data = new HashMap<>();
+                    data.put("error", "Invalid query parameters");
+
+                    String responseBody = om.valueToTree(data).toString();
+                    exchange.sendResponseHeaders(400, responseBody.getBytes().length);
+                    exchange.getResponseBody().write(responseBody.getBytes());
+
+                    exception.printStackTrace();
+                } catch (NullPointerException exception) {
+                    HashMap<String, String> data = new HashMap<>();
+                    data.put("error", "Internal server error");
+
+                    String responseBody = om.valueToTree(data).toString();
+                    exchange.sendResponseHeaders(500, responseBody.getBytes().length);
+                    exchange.getResponseBody().write(responseBody.getBytes());
+
+                    exception.printStackTrace();
                 } finally {
+                    //bez tej linijki serwer obsługuje jedynie co drugie połączenie
+                    exchange.close();
                     session.close();
                 }
-
-                HashMap<String, Object> map = new HashMap<>();
-                map.put("movies", result);
-                String data = om.valueToTree(map).toString();
-                exchange.getResponseHeaders().set("Content-type", "application/json");
-                exchange.sendResponseHeaders(200, data.length());
-
-                exchange.getResponseBody().write(data.getBytes());
             });
-            server.createContext("/script.js", new GetFileHandler("src/main/resources/script.js", "text/javascript"));
+            server.createContext("/reserve", new GetFileHandler("src/main/resources/reserve.html", "text/html"));
+            server.createContext("/reservation.js", new GetFileHandler("src/main/resources/reservation.js", "text/javascript"));
             server.createContext("/submit_reservation", new PostHandler(PostAction.SAVE_RESERVATION, sessionFactory));
             server.setExecutor(null); // creates a default executor
             server.start();
