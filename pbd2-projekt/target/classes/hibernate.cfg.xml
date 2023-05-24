@@ -1,0 +1,20 @@
+<hibernate-configuration>
+    <session-factory>
+
+        <property name="hibernate.connection.driver_class">org.postgresql.Driver</property>
+        <property name="hibernate.connection.url">jdbc:postgresql://mel.db.elephantsql.com:5432/zipduykp</property>
+        <property name="hibernate.connection.username">zipduykp</property>
+        <property name="hibernate.connection.password">ytoXPeffnyzjZjmN-UIJoxJP1c59TYfG</property>
+
+        <property name="show_sql">false</property>
+        <property name="hibernate.hbm2ddl.auto">update</property>
+
+        <mapping class="org.bd.model.Movie"/>
+        <mapping class="org.bd.model.Show"/>
+        <mapping class="org.bd.model.Client"/>
+        <mapping class="org.bd.model.Reservation"/>
+        <mapping class="org.bd.model.ReservationDetail"/>
+        <mapping class="org.bd.model.MovieRoom"/>
+
+    </session-factory>
+</hibernate-configuration>
