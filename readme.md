@@ -1,3 +1,10 @@
+# EDIT
+❗❗❗
+
+This repository was created due to problems I encounter with my computer while developing project. To see the final version go there: https://github.com/Bymbacz/Cinema-Reservation-App
+
+❗❗❗
+
 # Projekt bazy danych
 ## Członkowie grupy
 * Kacper Mazurczyk
